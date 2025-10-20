@@ -13,6 +13,7 @@
       </profile>
     </annotationProcessing>
     <bytecodeTargetLevel>
+      <module name="homework-5" target="21" />
       <module name="spring-demo" target="16" />
       <module name="src" target="1.8" />
     </bytecodeTargetLevel>
