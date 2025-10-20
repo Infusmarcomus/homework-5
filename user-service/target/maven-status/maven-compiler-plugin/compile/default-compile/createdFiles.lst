@@ -1,0 +1,12 @@
+com/example/springdemo/kafka/UserEventProducer.class
+com/example/springdemo/entity/User$UserBuilder.class
+com/example/springdemo/controller/UserController.class
+com/example/springdemo/service/UserService.class
+com/example/springdemo/dto/UserRegistrationDto.class
+com/example/springdemo/model/enums/Role.class
+com/example/springdemo/repository/UserRepository.class
+com/example/springdemo/config/AppConfig.class
+com/example/springdemo/mapper/UserMapper.class
+com/example/springdemo/dto/UserDto.class
+com/example/springdemo/entity/User.class
+com/example/springdemo/Main.class

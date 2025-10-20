@@ -1,0 +1,6 @@
+/Users/arturmarchenko/homework-5/notification-service/src/main/java/com/example/notificationservice/NotificationServiceApplication.java
+/Users/arturmarchenko/homework-5/notification-service/src/main/java/com/example/notificationservice/controller/EmailController.java
+/Users/arturmarchenko/homework-5/notification-service/src/main/java/com/example/notificationservice/dto/EmailRequest.java
+/Users/arturmarchenko/homework-5/notification-service/src/main/java/com/example/notificationservice/kafka/UserEventsConsumer.java
+/Users/arturmarchenko/homework-5/notification-service/src/main/java/com/example/notificationservice/service/EmailService.java
+/Users/arturmarchenko/homework-5/notification-service/src/main/java/com/example/notificationservice/service/NotificationService.java

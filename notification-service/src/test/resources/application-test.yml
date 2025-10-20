@@ -1,0 +1,12 @@
+# Тестовая конфигурация
+spring:
+  kafka:
+    bootstrap-servers: localhost:9092
+    consumer:
+      group-id: test-notification-group
+      auto-offset-reset: earliest
+
+logging:
+  level:
+    com.example.notificationservice: DEBUG
+    org.springframework.kafka: WARN

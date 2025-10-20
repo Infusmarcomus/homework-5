@@ -1,0 +1,30 @@
+server:
+  port: 8081
+
+spring:
+  kafka:
+    bootstrap-servers: localhost:9093
+    consumer:
+      group-id: notification-group
+      key-deserializer: org.apache.kafka.common.serialization.StringDeserializer
+      value-deserializer: org.springframework.kafka.support.serializer.JsonDeserializer
+      properties:
+        spring.json.trusted.packages: "*"
+        spring.json.use.type.headers: false
+        spring.json.value.default.type: com.example.common.dto.UserEventDto
+
+        # Настройки стабильности соединения
+        session.timeout.ms: 30000
+        heartbeat.interval.ms: 10000
+        request.timeout.ms: 40000
+        connections.max.idle.ms: 300000
+        metadata.max.age.ms: 300000
+        max.poll.interval.ms: 300000
+        fetch.max.wait.ms: 500
+        retry.backoff.ms: 1000
+
+logging:
+  level:
+    root: INFO
+    org.springframework.kafka: DEBUG
+    org.apache.kafka: INFO

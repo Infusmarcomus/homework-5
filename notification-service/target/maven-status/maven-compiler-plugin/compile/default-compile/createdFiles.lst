@@ -1,0 +1,6 @@
+com/example/notificationservice/service/EmailService.class
+com/example/notificationservice/dto/EmailRequest.class
+com/example/notificationservice/service/NotificationService.class
+com/example/notificationservice/kafka/UserEventsConsumer.class
+com/example/notificationservice/NotificationServiceApplication.class
+com/example/notificationservice/controller/EmailController.class
