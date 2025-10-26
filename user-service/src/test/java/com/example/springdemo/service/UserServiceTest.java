@@ -1,29 +1,33 @@
 package com.example.springdemo.service;
 
-
+import com.example.common.dto.UserEventDto;
+import com.example.springdemo.dto.CreateUserDto;
+import com.example.springdemo.dto.UpdateUserDto;
+import com.example.springdemo.dto.UserResponseDto;
 import com.example.springdemo.entity.User;
+import com.example.springdemo.exceptions.EmailAlreadyExistsException;
+import com.example.springdemo.exceptions.UserNotFoundException;
+import com.example.springdemo.exceptions.UserAlreadyDeletedException;
+import com.example.springdemo.kafka.UserEventProducer;
+import com.example.springdemo.mapper.UserMapper;
 import com.example.springdemo.repository.UserRepository;
-import org.junit.jupiter.api.MethodOrderer;
 import org.junit.jupiter.api.Test;
-import org.junit.jupiter.api.TestMethodOrder;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.InjectMocks;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
-import org.springframework.http.HttpStatus;
 import org.springframework.security.crypto.bcrypt.BCryptPasswordEncoder;
-import org.springframework.web.server.ResponseStatusException;
 
 import java.util.List;
 import java.util.Optional;
+import java.util.concurrent.CompletableFuture;
 
 import static org.junit.jupiter.api.Assertions.*;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.*;
 
-@TestMethodOrder(MethodOrderer.Random.class)
 @ExtendWith(MockitoExtension.class)
-public class UserServiceTest {
+class UserServiceTest {
 
     @Mock
     private UserRepository userRepository;
@@ -31,227 +35,322 @@ public class UserServiceTest {
     @Mock
     private BCryptPasswordEncoder passwordEncoder;
 
+    @Mock
+    private UserEventProducer userEventProducer;
+
+    @Mock
+    private UserMapper userMapper;
+
     @InjectMocks
     private UserService userService;
-    // ---------- createUser ----------
+
+    // Вспомогательный метод для создания UserResponseDto
+    private UserResponseDto createUserResponseDto(Long id, String name, String lastName, String email, Integer age) {
+        UserResponseDto dto = new UserResponseDto();
+        dto.setId(id);
+        dto.setName(name);
+        dto.setLastName(lastName);
+        dto.setEmail(email);
+        dto.setAge(age);
+        return dto;
+    }
+
+    // Тест 1: Успешное создание пользователя
     @Test
-    void createUser_shouldSaveUser_whenEmailIsUnique() {
-        //given
-        User user = new User();
-        user.setEmail("artur@mail.com");
-        user.setPassword("123456");
+    void createUser_WhenEmailNotExists_ShouldCreateUser() {
+        // Given
+        CreateUserDto createDto = new CreateUserDto("Артур", "Марченко", "artur@mail.ru", 25, "123456");
+        User userEntity = new User();
+        User savedUser = new User();
+        savedUser.setId(1L);
+        savedUser.setEmail("artur@mail.ru");
+        UserResponseDto responseDto = createUserResponseDto(1L, "Артур", "Марченко", "artur@mail.ru", 25);
 
-        when(userRepository.findByEmail("artur@mail.com")).thenReturn(Optional.empty());
-        when(passwordEncoder.encode("123456")).thenReturn("hashed123456");
-        when(userRepository.save(any(User.class))).thenAnswer(i -> i.getArgument(0));
+        when(userRepository.existsByEmail("artur@mail.ru")).thenReturn(false);
+        when(userMapper.toEntity(createDto)).thenReturn(userEntity);
+        when(passwordEncoder.encode("123456")).thenReturn("hashedPassword");
+        when(userRepository.save(any(User.class))).thenReturn(savedUser);
+        when(userMapper.toDto(savedUser)).thenReturn(responseDto);
 
-        //when
-        User savedUser = userService.createUser(user);
+        // Mock Kafka
+        CompletableFuture<Void> kafkaFuture = CompletableFuture.completedFuture(null);
+        when(userEventProducer.sendUserEvent(any(UserEventDto.class))).thenReturn(kafkaFuture);
 
-        //then
-        assertEquals("hashed123456", savedUser.getPassword());
+        // When
+        UserResponseDto result = userService.createUser(createDto);
+
+        // Then
+        assertNotNull(result);
+        assertEquals(1L, result.getId());
+        assertEquals("Артур", result.getName());
+        assertEquals("Марченко", result.getLastName());
+        assertEquals("artur@mail.ru", result.getEmail());
+        assertEquals(25, result.getAge());
+
+        verify(userRepository).existsByEmail("artur@mail.ru");
         verify(userRepository).save(any(User.class));
+        verify(passwordEncoder).encode("123456");
+        verify(userEventProducer).sendUserEvent(any(UserEventDto.class));
     }
 
+    // Тест 2: Создание пользователя с существующим email
     @Test
-    void createUser_shouldThrow_whenEmailExists() {
-        //given
-        User existingUser = new User();
-        existingUser.setEmail("artur@mail.com");
+    void createUser_WhenEmailExists_ShouldThrowEmailAlreadyExistsException() {
+        // Given
+        CreateUserDto createDto = new CreateUserDto("Артур", "Марченко", "existing@mail.ru", 25, "123456");
+        when(userRepository.existsByEmail("existing@mail.ru")).thenReturn(true);
 
-        User newUser = new User();
-        newUser.setEmail("artur@mail.com");
-        newUser.setPassword("123456");
-        //репозиторий находит существующего пользователя
-        when(userRepository.findByEmail("artur@mail.com"))
-                .thenReturn(Optional.of(existingUser));
+        // When & Then
+        EmailAlreadyExistsException exception = assertThrows(EmailAlreadyExistsException.class, () -> {
+            userService.createUser(createDto);
+        });
 
-        //when+then - выбрасывается исключение
-        ResponseStatusException exception = assertThrows(
-                ResponseStatusException.class,
-                () -> userService.createUser(newUser)
-        );
-        // Проверяем, что сообщение в исключении правильное
-        assertEquals("Email уже существует", exception.getReason());
-        assertEquals(HttpStatus.CONFLICT, exception.getStatusCode());
-        // Проверяем, что save() не был вызван
+        assertTrue(exception.getMessage().contains("existing@mail.ru"));
         verify(userRepository, never()).save(any(User.class));
-
-    }
-    // ---------- getAllUsers ----------
-    @Test
-    void getAllUsers_shouldReturnList_whenUsersExist() {
-        List<User> mockUsers = List.of(new User(), new User());
-        when(userRepository.findAllByIsActiveTrue()).thenReturn(mockUsers);
-
-        List<User> result = userService.getAllUsers();
-
-        assertEquals(2, result.size());
-        verify(userRepository).findAllByIsActiveTrue();
-    }
-    @Test
-    void getAllUsers_shouldThrow_whenNoUsersFound() {
-        when(userRepository.findAllByIsActiveTrue()).thenReturn(List.of());
-
-        ResponseStatusException ex = assertThrows(
-                ResponseStatusException.class,
-                () -> userService.getAllUsers()
-        );
-
-        assertEquals(HttpStatus.NOT_FOUND, ex.getStatusCode());
-        assertEquals("Пользователей нет!", ex.getReason()); //надо указать как в классе текст что мы ожидаем
-        verify(userRepository).findAllByIsActiveTrue();
-
-    }
-    @Test
-    void getAllUsers_shouldReturnOnlyActiveUsers() {
-        User active = new User();
-        active.setId(1L);
-        active.setEmail("active@mail.com");
-        active.setIsActive(true);
-
-        User inactive = new User();
-        inactive.setId(2L);
-        inactive.setEmail("inactive@mail.com");
-        inactive.setIsActive(false);
-
-        // мок возвращает обоих, но фильтрация на уровне репозитория оставит только активных
-        when(userRepository.findAllByIsActiveTrue()).thenReturn(List.of(active));
-
-
-        List<User> result = userService.getAllUsers();
-
-
-        assertEquals(1, result.size());
-        assertEquals("active@mail.com", result.get(0).getEmail());
-        verify(userRepository).findAllByIsActiveTrue();
-    }
-// ---------- getUserByEmail ----------
-@Test
-    void getUserByEmail_shouldReturnUser_whenExists() {
-        User user = new User();
-        user.setEmail("artur@mail.com");
-        when(userRepository.findByEmail("artur@mail.com")).
-                thenReturn(Optional.of(user));
-
-        User found = userService.getUserByEmail("artur@mail.com");
-
-        assertEquals("artur@mail.com", found.getEmail());
-        verify(userRepository).findByEmail("artur@mail.com");
-}
-@Test
-    void getUserByEmail_shouldThrow_whenNotFound() {
-        when(userRepository.findByEmail("noemail@mail.com")).thenReturn(Optional.empty());
-
-        ResponseStatusException ex = assertThrows(
-                ResponseStatusException.class,
-                () -> userService.getUserByEmail("noemail@mail.com")
-        );
-
-        assertEquals(HttpStatus.NOT_FOUND, ex.getStatusCode());
-        assertEquals("Пользователь не найден по email", ex.getReason());
-}
-
-    // ---------- getUserById ----------
-    @Test
-    void getUserById_shouldReturnUser_whenExists() {
-        User user = new User();
-        user.setId(1L);
-        when(userRepository.findById(1L)).thenReturn(Optional.of(user));
-
-        User found = userService.getUserById(1L);
-
-        assertEquals(1L, found.getId());
-        verify(userRepository).findById(1L);
+        verify(userEventProducer, never()).sendUserEvent(any(UserEventDto.class));
     }
 
+    // Тест 3: Успешное обновление пользователя
     @Test
-    void getUserById_shouldThrow_whenNotFound() {
-        when(userRepository.findById(99L)).thenReturn(Optional.empty());
-
-        ResponseStatusException ex = assertThrows(
-                ResponseStatusException.class,
-                () -> userService.getUserById(99L)
-        );
-        assertEquals(HttpStatus.NOT_FOUND, ex.getStatusCode());
-        assertEquals("Пользователь не найден по id", ex.getReason());
-
-
-    }
-
-// ------------updatedUserById-------------------------------
-    @Test
-    void updateUser_shouldUpdatedFields_whenUserExists() {
+    void updateUser_WhenUserExists_ShouldUpdateUser() {
+        // Given
         Long userId = 1L;
-        User existingUser = new User();
+        UpdateUserDto updateDto = new UpdateUserDto("Артур", "Дмитриев", "artur.dmitriev@mail.ru", 30);
 
+        User existingUser = new User();
         existingUser.setId(userId);
-        existingUser.setName("OldName");
-        existingUser.setLastName("OldLast");
-        existingUser.setEmail("old@mail.com");
+        existingUser.setName("Артур");
+        existingUser.setLastName("Марченко");
+        existingUser.setEmail("artur@mail.ru");
         existingUser.setAge(25);
 
-        // новые данные, пришедшие из контроллера
-        User updates = new User();
-        updates.setName("NewName");
-        updates.setLastName("NewLast");
-        updates.setEmail("new@mail.com");
-        updates.setAge(30);
+        User updatedUser = new User();
+        updatedUser.setId(userId);
+        UserResponseDto responseDto = createUserResponseDto(1L, "Артур", "Дмитриев", "artur.dmitriev@mail.ru", 30);
 
         when(userRepository.findById(userId)).thenReturn(Optional.of(existingUser));
-        when(userRepository.save(existingUser)).thenReturn(existingUser);
+        when(userRepository.existsByEmail("artur.dmitriev@mail.ru")).thenReturn(false);
+        when(userRepository.save(any(User.class))).thenReturn(updatedUser);
+        when(userMapper.toDto(updatedUser)).thenReturn(responseDto);
 
-        User updated = userService.updateUser(userId, updates);
+        // When
+        UserResponseDto result = userService.updateUser(userId, updateDto);
 
-        assertEquals("NewName", updated.getName());
-        assertEquals("NewLast", updated.getLastName());
-        assertEquals("new@mail.com", updated.getEmail());
-        assertEquals(30, updated.getAge());
-        verify(userRepository).findById(userId);
+        // Then
+        assertNotNull(result);
+        assertEquals(1L, result.getId());
+        assertEquals("Артур", result.getName());
+        assertEquals("Дмитриев", result.getLastName());
+        assertEquals("artur.dmitriev@mail.ru", result.getEmail());
+        assertEquals(30, result.getAge());
+
         verify(userRepository).save(existingUser);
-    }
-    @Test
-    void updateUser_shouldThrow_whenUserNotFound() {
-        // given
-        when(userRepository.findById(99L)).thenReturn(Optional.empty());
-
-        // when + then
-        ResponseStatusException ex = assertThrows(
-                ResponseStatusException.class,
-                () -> userService.updateUser(99L, new User())
-        );
-
-        assertEquals(HttpStatus.NOT_FOUND, ex.getStatusCode());
-        assertEquals("Пользователь не найден по id", ex.getReason());
-        verify(userRepository, never()).save(any());
+        assertNotNull(existingUser.getUpdatedAt());
     }
 
-    // ---------- deleteUserById ----------
+    // Тест 4: Обновление пользователя с существующим email
     @Test
-    void deleteUserById_shouldSetInactive_whenUserExists() {
+    void updateUser_WhenEmailExists_ShouldThrowEmailAlreadyExistsException() {
+        // Given
+        Long userId = 1L;
+        UpdateUserDto updateDto = new UpdateUserDto("Артур", "Марченко", "existing@mail.ru", 30);
+
+        User existingUser = new User();
+        existingUser.setId(userId);
+        existingUser.setEmail("artur@mail.ru");
+
+        when(userRepository.findById(userId)).thenReturn(Optional.of(existingUser));
+        when(userRepository.existsByEmail("existing@mail.ru")).thenReturn(true);
+
+        // When & Then
+        EmailAlreadyExistsException exception = assertThrows(EmailAlreadyExistsException.class, () -> {
+            userService.updateUser(userId, updateDto);
+        });
+
+        assertTrue(exception.getMessage().contains("existing@mail.ru"));
+        verify(userRepository, never()).save(any(User.class));
+    }
+
+    // Тест 5: Получение пользователя по несуществующему ID
+    @Test
+    void getUserById_WhenUserNotFound_ShouldThrowUserNotFoundException() {
+        // Given
+        Long userId = 999L;
+        when(userRepository.findById(userId)).thenReturn(Optional.empty());
+
+        // When & Then
+        UserNotFoundException exception = assertThrows(UserNotFoundException.class, () -> {
+            userService.getUserById(userId);
+        });
+
+        assertTrue(exception.getMessage().contains("999"));
+    }
+
+    // Тест 6: Успешное получение пользователя по ID
+    @Test
+    void getUserById_WhenUserExists_ShouldReturnUser() {
+        // Given
+        Long userId = 1L;
+        User user = new User();
+        user.setId(userId);
+        user.setEmail("artur@mail.ru");
+        UserResponseDto responseDto = createUserResponseDto(1L, "Артур", "Марченко", "artur@mail.ru", 25);
+
+        when(userRepository.findById(userId)).thenReturn(Optional.of(user));
+        when(userMapper.toDto(user)).thenReturn(responseDto);
+
+        // When
+        UserResponseDto result = userService.getUserById(userId);
+
+        // Then
+        assertNotNull(result);
+        assertEquals(1L, result.getId());
+        assertEquals("artur@mail.ru", result.getEmail());
+        verify(userRepository).findById(userId);
+    }
+
+    // Тест 7: Успешное получение пользователя по email
+    @Test
+    void getUserByEmail_WhenUserExists_ShouldReturnUser() {
+        // Given
+        String email = "artur@mail.ru";
         User user = new User();
         user.setId(1L);
-        user.setIsActive(true);
+        user.setEmail(email);
+        UserResponseDto responseDto = createUserResponseDto(1L, "Артур", "Марченко", "artur@mail.ru", 25);
 
-        when(userRepository.findById(1L)).thenReturn(Optional.of(user));
+        when(userRepository.findByEmail(email)).thenReturn(Optional.of(user));
+        when(userMapper.toDto(user)).thenReturn(responseDto);
 
-       userService.deleteUserById(1L);
+        // When
+        UserResponseDto result = userService.getUserByEmail(email);
 
-       assertFalse(user.getIsActive());
-       verify(userRepository).save(user);
-
+        // Then
+        assertNotNull(result);
+        assertEquals(1L, result.getId());
+        assertEquals("artur@mail.ru", result.getEmail());
+        verify(userRepository).findByEmail(email);
     }
+
+    // Тест 8: Получение пользователя по несуществующему email
     @Test
-    void deleteUserById_shouldThrow_whenUserNotFound() {
-        when(userRepository.findById(99L)).thenReturn(Optional.empty());
+    void getUserByEmail_WhenUserNotFound_ShouldThrowUserNotFoundException() {
+        // Given
+        String email = "nonexistent@mail.ru";
+        when(userRepository.findByEmail(email)).thenReturn(Optional.empty());
 
-        ResponseStatusException ex = assertThrows(
-                ResponseStatusException.class,
-                () -> userService.deleteUserById(99L)
-        );
+        // When & Then
+        UserNotFoundException exception = assertThrows(UserNotFoundException.class, () -> {
+            userService.getUserByEmail(email);
+        });
 
-        assertEquals(HttpStatus.NOT_FOUND, ex.getStatusCode());
-        assertEquals("Пользователь не найден по id", ex.getReason());
-        verify(userRepository, never()).save(any());
+        assertTrue(exception.getMessage().contains(email));
+    }
+
+    // Тест 9: Удаление пользователя
+    @Test
+    void deleteUserById_WhenUserExistsAndActive_ShouldSoftDelete() {
+        // Given
+        Long userId = 1L;
+        User user = new User();
+        user.setId(userId);
+        user.setIsActive(true);
+        user.setEmail("artur@mail.ru");
+
+        when(userRepository.findById(userId)).thenReturn(Optional.of(user));
+        when(userRepository.save(any(User.class))).thenReturn(user);
+
+        // Mock Kafka
+        CompletableFuture<Void> kafkaFuture = CompletableFuture.completedFuture(null);
+        when(userEventProducer.sendUserEvent(any(UserEventDto.class))).thenReturn(kafkaFuture);
+
+        // When
+        userService.deleteUserById(userId);
+
+        // Then
+        verify(userRepository).save(user);
+        assertFalse(user.getIsActive());
+        verify(userEventProducer).sendUserEvent(any(UserEventDto.class));
+    }
+
+    // Тест 10: Удаление уже удаленного пользователя
+    @Test
+    void deleteUserById_WhenUserAlreadyInactive_ShouldThrowUserAlreadyDeletedException() {
+        // Given
+        Long userId = 1L;
+        User user = new User();
+        user.setId(userId);
+        user.setIsActive(false);
+
+        when(userRepository.findById(userId)).thenReturn(Optional.of(user));
+
+        // When & Then
+        UserAlreadyDeletedException exception = assertThrows(UserAlreadyDeletedException.class, () -> {
+            userService.deleteUserById(userId);
+        });
+
+        assertTrue(exception.getMessage().contains(userId.toString()));
+        verify(userRepository, never()).save(any(User.class));
+    }
+
+    // Тест 11: Удаление несуществующего пользователя
+    @Test
+    void deleteUserById_WhenUserNotFound_ShouldThrowUserNotFoundException() {
+        // Given
+        Long userId = 999L;
+        when(userRepository.findById(userId)).thenReturn(Optional.empty());
+
+        // When & Then
+        UserNotFoundException exception = assertThrows(UserNotFoundException.class, () -> {
+            userService.deleteUserById(userId);
+        });
+
+        assertTrue(exception.getMessage().contains(userId.toString()));
+        verify(userRepository, never()).save(any(User.class));
+    }
+
+    // Тест 12: Получение всех активных пользователей
+    @Test
+    void getAllUsers_WhenActiveUsersExist_ShouldReturnUsers() {
+        // Given
+        User user1 = new User();
+        user1.setId(1L);
+        user1.setIsActive(true);
+
+        User user2 = new User();
+        user2.setId(2L);
+        user2.setIsActive(true);
+
+        UserResponseDto dto1 = createUserResponseDto(1L, "Артур", "Марченко", "artur@mail.ru", 25);
+        UserResponseDto dto2 = createUserResponseDto(2L, "Мария", "Иванова", "maria@mail.ru", 30);
+
+        when(userRepository.findAllByIsActiveTrue()).thenReturn(List.of(user1, user2));
+        when(userMapper.toDto(user1)).thenReturn(dto1);
+        when(userMapper.toDto(user2)).thenReturn(dto2);
+
+        // When
+        List<UserResponseDto> result = userService.getAllUsers();
+
+        // Then
+        assertEquals(2, result.size());
+        assertEquals(1L, result.get(0).getId());
+        assertEquals("artur@mail.ru", result.get(0).getEmail());
+        assertEquals(2L, result.get(1).getId());
+        assertEquals("maria@mail.ru", result.get(1).getEmail());
+        verify(userRepository).findAllByIsActiveTrue();
+    }
+
+    // Тест 13: Получение всех пользователей когда нет активных
+    @Test
+    void getAllUsers_WhenNoActiveUsers_ShouldThrowUserNotFoundException() {
+        // Given
+        when(userRepository.findAllByIsActiveTrue()).thenReturn(List.of());
+
+        // When & Then
+        UserNotFoundException exception = assertThrows(UserNotFoundException.class, () -> {
+            userService.getAllUsers();
+        });
+
+        assertTrue(exception.getMessage().contains("не найден"));
     }
 }

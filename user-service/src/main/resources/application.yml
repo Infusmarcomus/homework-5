@@ -18,7 +18,7 @@ spring:
         format_sql: true
 
   kafka:
-    bootstrap-servers: localhost:9093  # 👈 заменили на IP
+    bootstrap-servers: localhost:9093
     producer:
       key-serializer: org.apache.kafka.common.serialization.StringSerializer
       value-serializer: org.springframework.kafka.support.serializer.JsonSerializer
@@ -31,6 +31,21 @@ spring:
       value-deserializer: org.springframework.kafka.support.serializer.JsonDeserializer
       properties:
         spring.json.trusted.packages: "*"
+springdoc:
+  api-docs:
+    enabled: true
+    path: /api-docs
+  swagger-ui:
+    enabled: true
+    path: /swagger-ui.html
+    operationsSorter: method
+  info:
+    title: My API
+    description: API Documentation
+    version: 1.0.0
+    contact:
+      name: Developer
+      email: dev@example.com
 
 logging:
   level:

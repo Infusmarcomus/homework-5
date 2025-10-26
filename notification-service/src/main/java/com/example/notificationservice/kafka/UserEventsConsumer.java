@@ -20,9 +20,9 @@ public class UserEventsConsumer {
             log.info("Получено событие из Kafka: {}", event);
 
             if ("USER_CREATED".equals(event.eventType())) {
-                emailService.sendWelcomeEmail(event.userEmail());
+                emailService.sendWelcomeEmail(event.email());
             } else if ("USER_DELETED".equals(event.eventType())) {
-                emailService.sendGoodbyeEmail(event.userEmail());
+                emailService.sendGoodbyeEmail(event.email());
             } else {
                 log.warn("Неизвестный тип события: {}", event.eventType());
             }

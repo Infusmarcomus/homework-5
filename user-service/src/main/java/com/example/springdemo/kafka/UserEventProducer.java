@@ -21,7 +21,7 @@ public class UserEventProducer {
     public CompletableFuture<Void> sendUserEvent(UserEventDto event) {
         log.info("Отправка события в Kafka: {}", event);
 
-        return kafkaTemplate.send(USER_EVENTS_TOPIC, event.userEmail(), event)
+        return kafkaTemplate.send(USER_EVENTS_TOPIC, event.email(), event)  // ← event.email() теперь работает!
                 .thenAccept(result -> {
                     log.info("Событие успешно отправлено в топик: {}, partition: {}, offset: {}",
                             USER_EVENTS_TOPIC,

@@ -1,87 +1,100 @@
 package com.example.springdemo.controller;
-import com.example.springdemo.mapper.UserMapper;
+import com.example.springdemo.dto.UpdateUserDto;
+import io.swagger.v3.oas.annotations.Operation;
+import io.swagger.v3.oas.annotations.Parameter;
+import io.swagger.v3.oas.annotations.responses.ApiResponse;
+import io.swagger.v3.oas.annotations.responses.ApiResponses;
+import io.swagger.v3.oas.annotations.tags.Tag;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
 
-import com.example.springdemo.dto.UserDto;
-import com.example.springdemo.dto.UserRegistrationDto;
-import com.example.springdemo.entity.User;
+import com.example.springdemo.dto.UserResponseDto;
+import com.example.springdemo.dto.CreateUserDto;
 import com.example.springdemo.service.UserService;
 import java.util.List;
-import java.util.Map;
+
 
 @RestController // класс обрабатывает HTTP и возвращает JSON
 @RequestMapping("/api/users") // базовый URL для всех методов
 @RequiredArgsConstructor // позволяет не писать аргументы для конструктора
 //класс; точка входа сюда приходит HTTP запросы post get delete контролер вызывает нужный метод сервиса и возвращает результат клиенту в JSON
 
+@Tag(name = "User API", description = "Операции с пользователями")
+
+
+
 public class UserController {
+    @Autowired
+    private final UserService userService;
 
-    private final UserService userService; //вот здесь
-    private final UserMapper userMapper;
+    // POST /api/users — регистрация (201 Created)
+    @Operation(summary = "Регистрация пользователя",
+    description = "Создает нового пользователя в системе",
+    tags = {"User API"})
 
-    // POST /api/users/register — регистрация (201 Created)
-    @PostMapping("/register")
+    @PostMapping
     @ResponseStatus(HttpStatus.CREATED) // явный статус 201 для регистраци
-    public UserDto register(@Valid @RequestBody UserRegistrationDto dto) { //валидируем входной JSON по аннотациям из UserRegistrationDto
-        User user = userMapper.toEntity(dto);
-        User created = userService.createUser(user);
-        return userMapper.toDto(created);
+    public UserResponseDto createUser(@Parameter(description = "регистрация пользователя")
+                                        @Valid @RequestBody CreateUserDto createDto) {
+        return userService.createUser(createDto);
     }
 
 // GET /api/users — список всех
 @GetMapping
-public ResponseEntity<List<UserDto>> getAll() {
-    List<UserDto> users = userService.getAllUsers()
-            .stream()
-            .map(userMapper::toDto)
-            .toList();
-    if (users.isEmpty()) {
-        return ResponseEntity.noContent().build();
-    }
-    return ResponseEntity.ok(users);
+@Operation(summary = "Получить всех пользователей")
+public ResponseEntity<List<UserResponseDto>> getAllUsers() {
+    List<UserResponseDto> userEntities = userService.getAllUsers();
+    return ResponseEntity.ok(userEntities);
 }
-// GET /api/users - получить по id
+
+// GET /api/users/{id} - получить по id
+    @Operation(summary = "Получить пользователя по ID")
     @GetMapping("/{id}")
-    public ResponseEntity<UserDto> getById(@PathVariable("id") Long id) {
-        try {
-            User user = userService.getUserById(id);
-            return ResponseEntity.ok(userMapper.toDto(user));
-        } catch (IllegalArgumentException e) {
-            return ResponseEntity.notFound().build();
-        }
+    public ResponseEntity<UserResponseDto> getUser(@Parameter(description = "ID пользователя", example = "1")
+                                                   @PathVariable("id") Long id) {
+        UserResponseDto user = userService.getUserById(id);
+        return ResponseEntity.ok(user);
     }
 
 // GET /api/users/by-email?email=...
+    @Operation(summary = "Получить пользователя по email")
     @GetMapping("/by-email")
-    public ResponseEntity<?> getByEmail(@RequestParam("email") String email) {
+    public ResponseEntity<UserResponseDto> getByEmail(@Parameter(description = "email пользователя")
+                                            @RequestParam("email") String email) {
+        UserResponseDto user = userService.getUserByEmail(email);
+        return ResponseEntity.ok(user);
+        }
 
-        try {
-            User user = userService.getUserByEmail(email);
-            return ResponseEntity.ok(userMapper.toDto(user));
-        }
-        catch (IllegalArgumentException e) {
-            return ResponseEntity
-                    .status(HttpStatus.NOT_FOUND)
-                    .body(Map.of("error", e.getMessage()));
-        }
-    }
     // UPDATE /api/users/{id} - обновить
     @PutMapping("/{id}")
-    public ResponseEntity<UserDto> updateUser(@PathVariable("id") Long id,
-                                              @RequestBody UserDto userDto) {
-        User updated = userService.updateUser(id, userMapper.toEntity(userDto));
-        return ResponseEntity.ok(userMapper.toDto(updated));
+    @Operation(summary = "Обновить пользователя по ID")
+    public ResponseEntity<UserResponseDto> updateUser(@Parameter(description = "Обновить по ID")
+                                                @PathVariable("id") Long id,
+                                                      @RequestBody UpdateUserDto uptadeDto) {
+        UserResponseDto updatedUser = userService.updateUser(id, uptadeDto);
+        return ResponseEntity.ok(updatedUser);
     }
 
     // DELETE /api/users/{id} — удалить (204 No Content)
-@DeleteMapping("/{id}")
+    @Operation(summary = "Удалить пользователя")
+    @DeleteMapping("/{id}")
+    @ApiResponses({
+            @ApiResponse(responseCode = "200", description = "Пользователь удален"),
+            @ApiResponse(responseCode = "404", description = "Пользователь не найден"),
+            @ApiResponse(responseCode = "500", description = "Внутренняя ошибка сервера")
+    })
     @ResponseStatus(HttpStatus.NO_CONTENT)
-    public void delete(@PathVariable("id") Long id) {
+    public ResponseEntity<Void> deleteUser(@PathVariable("id") Long id) {
         userService.deleteUserById(id);
+        return ResponseEntity.noContent().build();
+    }
     }
 
-}
+
+
+
+

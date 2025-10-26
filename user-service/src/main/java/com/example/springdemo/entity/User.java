@@ -1,5 +1,6 @@
 package com.example.springdemo.entity;
 
+import io.swagger.v3.oas.annotations.media.Schema;
 import jakarta.persistence.*;
 import jakarta.validation.constraints.Email;
 import jakarta.validation.constraints.Max;
@@ -27,26 +28,36 @@ import java.time.Instant;
 @NoArgsConstructor // конструктор без аргументов (нужен Hibernate для инициализации)
 @AllArgsConstructor // конструктор со всеми аргументами
 @Builder //удобная аннотация для тестов
+
+
 public class User {
     @Id // аннотация говорит hibernate это первичный ключ
     @GeneratedValue(strategy = GenerationType.IDENTITY) // говорит: БД будет генерировать айди автоматом
     // автоинкрементная стратегия POSTgres Serial/Bigserial, в дальнййшем можно будет попробовать UUID уник айди
+
+
     private Long id;
 
     @NotBlank //поле не может быть null, пустым или состоять только из пробелов работает только для String
     @Size(max = 50) // длина строки
     @Column(name = "first_name", nullable = false, length = 50) // как создавать столбец в таблица для hibernate
+
+
+    @NotBlank(message = "Имя обязательно")
     private String name;
 
-    @NotBlank
+    @NotBlank(message = "Фамилия обязательна")
     @Size(max = 50)
     @Column(name = "last_name", nullable = false, length = 50)
+
+
     private String lastName;
 
     @NotBlank
     @Email
     @Size(max = 254)
     @Column(nullable = false, length = 254) // unique = true не пишу потому что хочу сделать контроль через table там уже есть параметр
+
     private String email;
 
     @JsonIgnore
@@ -55,14 +66,16 @@ public class User {
     @Column(nullable = false, length = 100)
     private String password;
 
-    @Min(0)
+    @Min(1)
     @Max(150)
     @Column(nullable = true) // пусть возраст будет необязательным
+
     private Integer age;
 
 
     @CreationTimestamp // когда создаёшь новую запись (INSERT), автоматически проставь сюда текущее время
     @Column(nullable = false, updatable = false) // updatable false гарантирует что датавремя создания не изменится даже если попытаюсь вызвать user.setCreatedAt or save
+    @Schema(description = "Дата создания", example = "2023-01-01T10:00:00")
     private Instant createdAt; // localdatetime хранит дату и время без часового пояса instant точное время по UTC
 
     @UpdateTimestamp // можно будет понять как ORM следит за изменениями обьекта
